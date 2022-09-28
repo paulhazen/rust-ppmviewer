@@ -214,27 +214,20 @@ fn read_ppm_header(path: &str) -> (usize, PPM) {
             // read bytes until whitespace or \n
             while let Ok(n) = f.read(&mut byte_for) {
                 if n != 0 {
-                    // we need to find out something
+                    // we increment the byte position regardless of what type
+                    byte_position += 1;
+                    
+                    // which byte is found?
                     match byte_for {
-                        [10] => {
-                            byte_position += 1;
-                            break
-                        },
-                        [13] => {
-                            byte_position += 1;
-                            break
-                        },
-                        [32] => {
-                            byte_position += 1;
-                            break
+                        [10] | [13] | [32] => { // any of these indicates whitespace (I think?)
+                            break;
                         },
                         // we have encountered a comment, read until a line break
                         [35] => {
-                            byte_position += 1;
                             while let Ok(z) = f.read(&mut byte_for) {
                                 if z!= 0 {
                                     byte_position += 1;
-                                    if byte_for == [35] || byte_for == [13] || byte_for == [10]{
+                                    if byte_for == [35] || byte_for == [13] || byte_for == [10] {
                                         break;
                                     }
                                 }
@@ -246,7 +239,6 @@ fn read_ppm_header(path: &str) -> (usize, PPM) {
                         }
                         _ => {
                             number_byte.push(byte_for[0]);
-                            byte_position += 1;
                             continue
                         },
                     }
@@ -278,16 +270,25 @@ fn read_ppm_header(path: &str) -> (usize, PPM) {
 }
 
 fn read_ppm_binary_image_data(path: &str, ppm_object: PPM, start_position: usize) -> Vec<PpmValue> {
+
+    // open the file
     let mut f = File::open(path).unwrap();
-    // move the cursor 42 bytes from the start of the file
+    
+    // seek to the correct position for the image data to start
     f.seek(SeekFrom::Start((start_position) as u64)).unwrap();
+
+    // create a new vector of PpmValues
     let mut img_data = Vec::<PpmValue>::new();
 
     if ppm_object.ppm_type == PpmType::P6 {
         let mut byte_for = [0; 3]; // important note: 0x32 is the whitespace code.
         while let Ok(n) = f.read(&mut byte_for) {
             if n != 0 {
-                img_data.push(PpmValue::new(i32::from_be_bytes([0,0,0,byte_for[0]]),i32::from_be_bytes([0,0,0,byte_for[1]]), i32::from_be_bytes([0,0,0,byte_for[2]])));
+                img_data.push(PpmValue::new(
+                  i32::from_be_bytes([0,0,0,byte_for[0]]),
+                  i32::from_be_bytes([0,0,0,byte_for[1]]), 
+                  i32::from_be_bytes([0,0,0,byte_for[2]])
+                ));
             }
             else {
                 break;
@@ -298,7 +299,11 @@ fn read_ppm_binary_image_data(path: &str, ppm_object: PPM, start_position: usize
         while let Ok(n) = f.read(&mut byte_for) {
             if n != 0 {
                 let gs_data = i32::from_be_bytes([0,0,0,byte_for[0]]);
-                img_data.push(PpmValue::new(((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32,((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32,((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32));
+                img_data.push(PpmValue::new(
+                  ((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32,
+                  ((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32,
+                  ((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32
+                ));
             }
             else {
                 break;
@@ -309,13 +314,20 @@ fn read_ppm_binary_image_data(path: &str, ppm_object: PPM, start_position: usize
         while let Ok(n) = f.read(&mut byte_for) {
             if n != 0 {
                 for i in (0..8).rev() {
+                    
                     let pixel_data = get_bit_at(byte_for[0], i).unwrap();
+
                     let final_value = if pixel_data {
                         0
                     } else {
                         255
                     };
-                    img_data.push(PpmValue::new(final_value, final_value, final_value));
+
+                    img_data.push(PpmValue::new(
+                      final_value, 
+                      final_value, 
+                      final_value)
+                    );
                     //println!("{:?} => {:?} = {:?}", byte_for[0], i, get_bit_at(byte_for[0] as u32, i).unwrap());
                 }
             }
@@ -338,8 +350,10 @@ fn get_bit_at(input: u8, n: u8) -> Result<bool, ()> {
 
 fn main() -> Result<(), Error> {
 
+    // get the arguments from the command line
     let args: Vec<String> = env::args().collect();
 
+    // require the filename
     if args.len() <= 1 {
         println!("File Name is required.");
         std::process::exit(0);
@@ -351,12 +365,14 @@ fn main() -> Result<(), Error> {
         println!("File Name is required.");
         std::process::exit(0);
     }
+
     let mut world = World::new();
+    
     let (byte_position, mut header) : (usize, PPM) = read_ppm_header(filename);
+    
     if header.ppm_type == PpmType::P1 || header.ppm_type == PpmType::P2 || header.ppm_type == PpmType::P3 {
         header.values = read_ppm_ascii_file(filename, header.clone().ppm_type);
-    }
-    else if header.ppm_type == PpmType::P6 || header.ppm_type == PpmType::P5 || header.ppm_type == PpmType::P4 {
+    } else if header.ppm_type == PpmType::P6 || header.ppm_type == PpmType::P5 || header.ppm_type == PpmType::P4 {
         // there is an issue where byte were misaligned.
         header.values = read_ppm_binary_image_data(filename, header.clone(), byte_position);
     }
@@ -416,7 +432,6 @@ fn main() -> Result<(), Error> {
             }
             
             // Update internal state and request a redraw
-            world.update();
             window.request_redraw();
         }
     });
@@ -430,10 +445,6 @@ impl World {
             single_draw: true,
             has_been_drawn: false
         }
-    }
-
-    /// Update the `World` internal state; bounce the box around the screen.
-    fn update(&mut self) {
     }
 
     /// Draw the `World` state to the frame buffer.
