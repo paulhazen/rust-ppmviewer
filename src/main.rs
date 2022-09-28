@@ -51,12 +51,11 @@ struct PpmValue {
 }
 
 impl PpmValue {
-    fn new(red: i32, green: i32, blue: i32, alpha: f32) -> Self {
+    fn new(red: i32, green: i32, blue: i32) -> Self {
         PpmValue {
             r: red,
             g: green,
-            b: blue,
-            a: alpha,
+            b: blue
         }
     } 
 }
@@ -138,11 +137,11 @@ fn read_ppm_ascii_file(path: &str, ppm_type: PpmType) -> Vec<PpmValue> {
 
         let x : Vec<i32> = (&va[0..offset]).split_whitespace().map(|x| x.parse::<i32>().unwrap()).collect();
         if dat.ppm_type == PpmType::P3 {
-            dat.values.push(PpmValue::new(x[0], x[1], x[2], 1.0));
+            dat.values.push(PpmValue::new(x[0], x[1], x[2]));
         }
         else if dat.ppm_type == PpmType::P2 {
             for val in x {
-                dat.values.push(PpmValue::new(((val as f32/dat.max_value as f32) * 255.0) as i32, ((val as f32/dat.max_value as f32) * 255.0) as i32, ((val as f32/dat.max_value as f32) * 255.0) as i32, 1.0));
+                dat.values.push(PpmValue::new(((val as f32/dat.max_value as f32) * 255.0) as i32, ((val as f32/dat.max_value as f32) * 255.0) as i32, ((val as f32/dat.max_value as f32) * 255.0) as i32));
                 //println!("{:?} / {:?} = {:?}", val as f32, dat.max_value as f32, ((val as f32/dat.max_value as f32) * 255.0) as i32);
             }
         } else if dat.ppm_type == PpmType::P1 {
@@ -152,7 +151,7 @@ fn read_ppm_ascii_file(path: &str, ppm_type: PpmType) -> Vec<PpmValue> {
                 } else {
                     255
                 };
-                dat.values.push(PpmValue::new(pixel_data, pixel_data, pixel_data, 1.0));
+                dat.values.push(PpmValue::new(pixel_data, pixel_data, pixel_data));
                 //println!("{:?} / {:?} = {:?}", val as f32, dat.max_value as f32, ((val as f32/dat.max_value as f32) * 255.0) as i32);
             }
         }
@@ -288,7 +287,7 @@ fn read_ppm_binary_image_data(path: &str, ppm_object: PPM, start_position: usize
         let mut byte_for = [0; 3]; // important note: 0x32 is the whitespace code.
         while let Ok(n) = f.read(&mut byte_for) {
             if n != 0 {
-                img_data.push(PpmValue::new(i32::from_be_bytes([0,0,0,byte_for[0]]),i32::from_be_bytes([0,0,0,byte_for[1]]), i32::from_be_bytes([0,0,0,byte_for[2]]), 1.0));
+                img_data.push(PpmValue::new(i32::from_be_bytes([0,0,0,byte_for[0]]),i32::from_be_bytes([0,0,0,byte_for[1]]), i32::from_be_bytes([0,0,0,byte_for[2]])));
             }
             else {
                 break;
@@ -299,7 +298,7 @@ fn read_ppm_binary_image_data(path: &str, ppm_object: PPM, start_position: usize
         while let Ok(n) = f.read(&mut byte_for) {
             if n != 0 {
                 let gs_data = i32::from_be_bytes([0,0,0,byte_for[0]]);
-                img_data.push(PpmValue::new(((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32,((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32,((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32, 1.0));
+                img_data.push(PpmValue::new(((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32,((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32,((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32));
             }
             else {
                 break;
@@ -316,7 +315,7 @@ fn read_ppm_binary_image_data(path: &str, ppm_object: PPM, start_position: usize
                     } else {
                         255
                     };
-                    img_data.push(PpmValue::new(final_value, final_value, final_value, 1.0));
+                    img_data.push(PpmValue::new(final_value, final_value, final_value));
                     //println!("{:?} => {:?} = {:?}", byte_for[0], i, get_bit_at(byte_for[0] as u32, i).unwrap());
                 }
             }
@@ -427,10 +426,6 @@ impl World {
     /// Create a new `World` instance that can draw a moving box.
     fn new() -> Self {
         Self {
-            box_x: 24,
-            box_y: 16,
-            velocity_x: 1,
-            velocity_y: 1,
             frame: None,
             single_draw: true,
             has_been_drawn: false
