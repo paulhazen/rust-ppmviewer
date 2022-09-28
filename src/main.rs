@@ -47,8 +47,7 @@ struct PPM {
 struct PpmValue {
     r: i32,
     g: i32,
-    b: i32,
-    a: f32,
+    b: i32
 }
 
 impl PpmValue {
