@@ -19,10 +19,6 @@ use std::env;
 /// Representation of the application state
 #[derive(Clone)]
 struct World {
-    box_x: i16,
-    box_y: i16,
-    velocity_x: i16,
-    velocity_y: i16,
     frame: Option<PPM>,
     single_draw: bool,
     has_been_drawn: bool,
