@@ -176,17 +176,18 @@ fn read_ppm_ascii_file(path: &str, ppm_type: PpmType) -> Vec<PpmValue> {
     dat.values
 }
 
-
 /// Given a path, it will parse the header information for the PPM family of files
 /// and returns the byte position where the header ends as well as the data inside
 /// the header object. 
 fn read_ppm_header(path: &str) -> (usize, PPMHeader) {
     let mut f = File::open(path).unwrap();
-    //let mut f = File::open("test_assets/test1.ppm").unwrap();
-    //let mut header = PPM::new();
+    let mut byte_position: usize = 0;
+
     let mut header: PPMHeader = PPMHeader::new();
     let mut magic_number = [0; 2];
 
+    /*#region Get the type of PPM file */
+    // Get the type of PPM file we are reading
     f.read_exact(&mut magic_number).unwrap();
     let ppm_type = match magic_number {
         [80, 49] => { PpmType::P1 },
@@ -198,7 +199,9 @@ fn read_ppm_header(path: &str) -> (usize, PPMHeader) {
         _ => { PpmType::P0 }
     };
     header.ppm_type = ppm_type;
-    let mut byte_position : usize = 2;
+    byte_position += 2;
+    /* #endregion */
+
     // if we have found an ASCII ppm file (p3) then we pass this data onto 
     let mut byte_for = [0; 1]; // important note: 0x32 is the whitespace code.
     while let Ok(n) = f.read(&mut byte_for) {
@@ -215,6 +218,8 @@ fn read_ppm_header(path: &str) -> (usize, PPMHeader) {
                 number_byte.push(byte_for[0]);
                 byte_position += 1;
             }
+
+            /* #region Read until whitespace */
             // read bytes until whitespace or \n
             while let Ok(n) = f.read(&mut byte_for) {
                 if n != 0 {
@@ -250,6 +255,7 @@ fn read_ppm_header(path: &str) -> (usize, PPMHeader) {
                     break
                 }
             }
+            /* #endregion */
 
             // we need to load up data;
             // converts byte array into integer values
