@@ -26,20 +26,25 @@ struct World {
 
 impl World {
     fn get_width(self) -> i32 {
-        self.frame.unwrap().width
+        self.frame.unwrap().ppm_header.width
     }
 
     fn get_height(self) -> i32 {
-        self.frame.unwrap().height
+        self.frame.unwrap().ppm_header.height
     }
 }
 
 #[derive(Debug, Clone)]
+struct PPMHeader {
+  ppm_type: PpmType,
+  width: i32,
+  height: i32,
+  max_value: i32
+}
+
+#[derive(Debug, Clone)]
 struct PPM {
-    ppm_type: PpmType,
-    width: i32,
-    height: i32,
-    max_value: i32,
+    ppm_header: PPMHeader,
     values: Vec<PpmValue>,
 }
 
@@ -80,13 +85,21 @@ enum PpmType {
     P0,
 }
 
+impl PPMHeader {
+  fn new() -> Self {
+    PPMHeader {
+      ppm_type: PpmType::P0,
+      width: 0,
+      height: 0,
+      max_value: 0,
+    }
+  }
+}
+
 impl PPM {
     fn new() -> Self {
         PPM {
-            ppm_type: PpmType::P0,
-            width: 0,
-            height: 0,
-            max_value: 0,
+            ppm_header: PPMHeader::new(),
             values: Vec::new(),
         }
     }
@@ -97,7 +110,7 @@ impl PPM {
 fn read_ppm_ascii_file(path: &str, ppm_type: PpmType) -> Vec<PpmValue> {
     let file = File::open(path).unwrap();
     let mut dat : PPM = PPM::new();
-    dat.ppm_type = ppm_type;
+    dat.ppm_header.ppm_type = ppm_type;
     let reader = BufReader::new(file);
 
     let mut skip_first_line : bool = false;
@@ -115,17 +128,17 @@ fn read_ppm_ascii_file(path: &str, ppm_type: PpmType) -> Vec<PpmValue> {
             continue
         }
 
-        if dat.width == 0 && dat.height == 0 {
+        if dat.ppm_header.width == 0 && dat.ppm_header.height == 0 {
             let bar : Vec<i32> = va.split(' ').map(|x| x.parse::<i32>().unwrap()).collect();
-            dat.width = bar[0];
+            dat.ppm_header.width = bar[0];
 
-            dat.height = bar[1];
+            dat.ppm_header.height = bar[1];
             //println!("This is width & Height: {:?}", bar);
             continue
         }
 
-        if dat.max_value == 0 && dat.ppm_type != PpmType::P1 {
-            dat.max_value = va.parse::<i32>().unwrap_or_default();
+        if dat.ppm_header.max_value == 0 && dat.ppm_header.ppm_type != PpmType::P1 {
+            dat.ppm_header.max_value = va.parse::<i32>().unwrap_or_default();
             //println!("This is width & Height: {:?}", dat.max_value);
             continue
         }
@@ -136,15 +149,19 @@ fn read_ppm_ascii_file(path: &str, ppm_type: PpmType) -> Vec<PpmValue> {
          };
 
         let x : Vec<i32> = (&va[0..offset]).split_whitespace().map(|x| x.parse::<i32>().unwrap()).collect();
-        if dat.ppm_type == PpmType::P3 {
+        if dat.ppm_header.ppm_type == PpmType::P3 {
             dat.values.push(PpmValue::new(x[0], x[1], x[2]));
         }
-        else if dat.ppm_type == PpmType::P2 {
+        else if dat.ppm_header.ppm_type == PpmType::P2 {
             for val in x {
-                dat.values.push(PpmValue::new(((val as f32/dat.max_value as f32) * 255.0) as i32, ((val as f32/dat.max_value as f32) * 255.0) as i32, ((val as f32/dat.max_value as f32) * 255.0) as i32));
+                dat.values.push(PpmValue::new(
+                  ((val as f32/dat.ppm_header.max_value as f32) * 255.0) as i32, 
+                  ((val as f32/dat.ppm_header.max_value as f32) * 255.0) as i32, 
+                  ((val as f32/dat.ppm_header.max_value as f32) * 255.0) as i32
+                ));
                 //println!("{:?} / {:?} = {:?}", val as f32, dat.max_value as f32, ((val as f32/dat.max_value as f32) * 255.0) as i32);
             }
-        } else if dat.ppm_type == PpmType::P1 {
+        } else if dat.ppm_header.ppm_type == PpmType::P1 {
             for val in x {
                 let pixel_data = if val == 0 {
                     0
@@ -163,10 +180,11 @@ fn read_ppm_ascii_file(path: &str, ppm_type: PpmType) -> Vec<PpmValue> {
 /// Given a path, it will parse the header information for the PPM family of files
 /// and returns the byte position where the header ends as well as the data inside
 /// the header object. 
-fn read_ppm_header(path: &str) -> (usize, PPM) {
+fn read_ppm_header(path: &str) -> (usize, PPMHeader) {
     let mut f = File::open(path).unwrap();
     //let mut f = File::open("test_assets/test1.ppm").unwrap();
-    let mut header = PPM::new();
+    //let mut header = PPM::new();
+    let mut header: PPMHeader = PPMHeader::new();
     let mut magic_number = [0; 2];
 
     f.read_exact(&mut magic_number).unwrap();
@@ -280,7 +298,7 @@ fn read_ppm_binary_image_data(path: &str, ppm_object: PPM, start_position: usize
     // create a new vector of PpmValues
     let mut img_data = Vec::<PpmValue>::new();
 
-    if ppm_object.ppm_type == PpmType::P6 {
+    if ppm_object.ppm_header.ppm_type == PpmType::P6 {
         let mut byte_for = [0; 3]; // important note: 0x32 is the whitespace code.
         while let Ok(n) = f.read(&mut byte_for) {
             if n != 0 {
@@ -294,22 +312,22 @@ fn read_ppm_binary_image_data(path: &str, ppm_object: PPM, start_position: usize
                 break;
             }
         }
-    } else if ppm_object.ppm_type == PpmType::P5 {
+    } else if ppm_object.ppm_header.ppm_type == PpmType::P5 {
         let mut byte_for = [0; 1]; // important note: 0x32 is the whitespace code.
         while let Ok(n) = f.read(&mut byte_for) {
             if n != 0 {
                 let gs_data = i32::from_be_bytes([0,0,0,byte_for[0]]);
                 img_data.push(PpmValue::new(
-                  ((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32,
-                  ((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32,
-                  ((gs_data as f32 / ppm_object.max_value as f32) * 255.0) as i32
+                  ((gs_data as f32 / ppm_object.ppm_header.max_value as f32) * 255.0) as i32,
+                  ((gs_data as f32 / ppm_object.ppm_header.max_value as f32) * 255.0) as i32,
+                  ((gs_data as f32 / ppm_object.ppm_header.max_value as f32) * 255.0) as i32
                 ));
             }
             else {
                 break;
             }
         }
-    } else if ppm_object.ppm_type == PpmType::P4 {
+    } else if ppm_object.ppm_header.ppm_type == PpmType::P4 {
         let mut byte_for = [0; 1]; // important note: 0x32 is the whitespace code.
         while let Ok(n) = f.read(&mut byte_for) {
             if n != 0 {
@@ -368,15 +386,20 @@ fn main() -> Result<(), Error> {
 
     let mut world = World::new();
     
-    let (byte_position, mut header) : (usize, PPM) = read_ppm_header(filename);
+
+    let mut ppm = PPM::new();
+    let (byte_position, header) : (usize, PPMHeader) = read_ppm_header(filename);
     
+    
+    ppm.ppm_header = header.to_owned();
+
     if header.ppm_type == PpmType::P1 || header.ppm_type == PpmType::P2 || header.ppm_type == PpmType::P3 {
-        header.values = read_ppm_ascii_file(filename, header.clone().ppm_type);
+      ppm.values = read_ppm_ascii_file(filename, header.clone().ppm_type);
     } else if header.ppm_type == PpmType::P6 || header.ppm_type == PpmType::P5 || header.ppm_type == PpmType::P4 {
         // there is an issue where byte were misaligned.
-        header.values = read_ppm_binary_image_data(filename, header.clone(), byte_position);
+        ppm.values = read_ppm_binary_image_data(filename, ppm.clone(), byte_position);
     }
-    world.frame = Some(header);
+    world.frame = Some(ppm);
 
     let w_width = world.clone().get_width();
     let w_height = world.clone().get_height();
@@ -454,7 +477,7 @@ impl World {
         if self.single_draw && self.has_been_drawn {
             return
         }
-        if self.frame.as_ref().unwrap().ppm_type != PpmType::P0 {
+        if self.frame.as_ref().unwrap().ppm_header.ppm_type != PpmType::P0 {
             for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
                 let frame_instance = self.frame.as_ref().unwrap();
                 let rgba = [frame_instance.values[i].r as u8, frame_instance.values[i].g as u8, frame_instance.values[i].b as u8, 0xff];
