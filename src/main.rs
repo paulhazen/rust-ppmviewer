@@ -39,7 +39,8 @@ struct PPMHeader {
   ppm_type: PpmType,
   width: i32,
   height: i32,
-  max_value: i32
+  max_value: i32,
+  data_position: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +93,7 @@ impl PPMHeader {
       width: 0,
       height: 0,
       max_value: 0,
+      data_position: 0,
     }
   }
 }
@@ -179,12 +181,15 @@ fn read_ppm_ascii_file(path: &str, ppm_type: PpmType) -> Vec<PpmValue> {
 /// Given a path, it will parse the header information for the PPM family of files
 /// and returns the byte position where the header ends as well as the data inside
 /// the header object. 
-fn read_ppm_header(path: &str) -> (usize, PPMHeader) {
+fn read_ppm_header(path: &str) -> PPMHeader {
     let mut f = File::open(path).unwrap();
     let mut byte_position: usize = 0;
 
     let mut header: PPMHeader = PPMHeader::new();
     let mut magic_number = [0; 2];
+
+    // special values are the white spaces (in ascii, and '#', which demarks the start of a comment)
+    let special_values = [[10], [32], [35], [13]];
 
     /*#region Get the type of PPM file */
     // Get the type of PPM file we are reading
@@ -214,12 +219,13 @@ fn read_ppm_header(path: &str) -> (usize, PPMHeader) {
             let mut number_byte = Vec::new(); // important note: 0x32 is the whitespace code.
 
             // ensure we don't double read over an actual piece of information
-            if byte_for != [10] && byte_for != [32] && byte_for != [35] && byte_for != [13] {
+            if special_values.contains(&byte_for) {
                 number_byte.push(byte_for[0]);
                 byte_position += 1;
             }
 
             /* #region Read until whitespace */
+            // TODO: Test this - I'm not sure it will work for comments inside PPM files
             // read bytes until whitespace or \n
             while let Ok(n) = f.read(&mut byte_for) {
                 if n != 0 {
@@ -228,7 +234,7 @@ fn read_ppm_header(path: &str) -> (usize, PPMHeader) {
                     
                     // which byte is found?
                     match byte_for {
-                        [10] | [13] | [32] => { // any of these indicates whitespace (I think?)
+                        [10] | [13] | [32] => { // any of these indicates whitespace
                             break;
                         },
                         // we have encountered a comment, read until a line break
@@ -275,17 +281,18 @@ fn read_ppm_header(path: &str) -> (usize, PPMHeader) {
             break
         }
     }
-
-    (byte_position, header)
+    
+    header.data_position = byte_position;
+    header
 }
 
-fn read_ppm_binary_image_data(path: &str, ppm_object: PPM, start_position: usize) -> Vec<PpmValue> {
+fn read_ppm_binary_image_data(path: &str, ppm_object: PPM) -> Vec<PpmValue> {
 
     // open the file
     let mut f = File::open(path).unwrap();
     
     // seek to the correct position for the image data to start
-    f.seek(SeekFrom::Start((start_position) as u64)).unwrap();
+    f.seek(SeekFrom::Start((ppm_object.header.data_position) as u64)).unwrap();
 
     // create a new vector of PpmValues
     let mut img_data = Vec::<PpmValue>::new();
@@ -380,7 +387,7 @@ fn main() -> Result<(), Error> {
     
 
     let mut ppm = PPM::new();
-    let (byte_position, header) : (usize, PPMHeader) = read_ppm_header(filename);
+    let header = read_ppm_header(filename);
     
     
     ppm.header = header.to_owned();
@@ -389,7 +396,7 @@ fn main() -> Result<(), Error> {
       ppm.values = read_ppm_ascii_file(filename, header.clone().ppm_type);
     } else if header.ppm_type == PpmType::P6 || header.ppm_type == PpmType::P5 || header.ppm_type == PpmType::P4 {
         // there is an issue where byte were misaligned.
-        ppm.values = read_ppm_binary_image_data(filename, ppm.clone(), byte_position);
+        ppm.values = read_ppm_binary_image_data(filename, ppm.clone());
     }
     world.frame = Some(ppm);
 
