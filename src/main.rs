@@ -219,7 +219,7 @@ fn read_ppm_header(path: &str) -> PPMHeader {
             let mut number_byte = Vec::new(); // important note: 0x32 is the whitespace code.
 
             // ensure we don't double read over an actual piece of information
-            if special_values.contains(&byte_for) {
+            if !special_values.contains(&byte_for) {
                 number_byte.push(byte_for[0]);
                 byte_position += 1;
             }
